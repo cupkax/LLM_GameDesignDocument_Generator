@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDD Generator with Ollama</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto;
+        }
+
+        h1,
+        h2 {
+            color: #333;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+
+        .keyword-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        .keyword-input input {
+            flex-grow: 1;
+            padding: 5px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .add-keyword-btn {
+            background-color: #008CBA;
+        }
+
+        #generateBtn,
+        #saveBtn,
+        #loadBtn {
+            display: inline-block;
+            width: 30%;
+            margin-top: 20px;
+            margin-right: 1%;
+        }
+
+        #output {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+
+        #loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .keyword-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        .keyword-input input[type="text"] {
+            flex-grow: 1;
+            padding: 5px;
+        }
+
+        .keyword-input input[type="text"].keyword {
+            flex-basis: 30%;
+        }
+
+        .keyword-input input[type="text"].description {
+            flex-basis: 70%;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>GDD Generator with Optional Description</h1>
+
+    <div id="gddSections"></div>
+
+    <button id="generateBtn">Generate GDD with Ollama</button>
+    <button id="saveBtn">Save Draft</button>
+    <button id="loadBtn">Load Draft</button>
+    <div id="loading">Generating GDD... Please wait.</div>
+    <div id="output"></div>
+
+    <script>
+        const gddStructure = [
+            { id: 'concept', title: 'Game Concept' },
+            { id: 'genre', title: 'Genre' },
+            { id: 'target-audience', title: 'Target Audience' },
+            { id: 'gameplay', title: 'Gameplay' },
+            { id: 'mechanics', title: 'Core Mechanics' },
+            { id: 'features', title: 'Key Features' },
+            { id: 'story', title: 'Story Overview' },
+            { id: 'art-style', title: 'Art Style' },
+            { id: 'audio', title: 'Audio' },
+            { id: 'technical', title: 'Technical Specifications' }
+        ];
+
+        function createKeywordInput(sectionId, keyword = '', description = '') {
+            return `
+                <div class="keyword-input">
+                    <input type="text" placeholder="Keyword" class="keyword" value="${keyword}">
+                    <input type="text" placeholder="Short description" class="description" value="${description}">
+                </div>
+            `;
+        }
+
+        function createSection(section) {
+            return `
+                <div class="section" id="${section.id}">
+                    <h2>${section.title}</h2>
+                    <div class="keywords-container">
+                        ${createKeywordInput(section.id)}
+                    </div>
+                    <button class="add-keyword-btn" onclick="addKeywordInput('${section.id}')">Add Keyword</button>
+                </div>
+            `;
+        }
+
+        const gddSectionsContainer = document.getElementById('gddSections');
+        gddStructure.forEach(section => {
+            gddSectionsContainer.innerHTML += createSection(section);
+        });
+
+        function addKeywordInput(sectionId, keyword = '', description = '') {
+            const container = document.querySelector(`#${sectionId} .keywords-container`);
+            container.innerHTML += createKeywordInput(sectionId, keyword, description);
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', generateGDDWithOllama);
+        document.getElementById('saveBtn').addEventListener('click', saveDraft);
+        document.getElementById('loadBtn').addEventListener('click', loadDraft);
+
+        async function generateGDDWithOllama() {
+            const gddData = {};
+            gddStructure.forEach(section => {
+                const sectionElement = document.getElementById(section.id);
+                const keywordInputs = sectionElement.querySelectorAll('.keyword-input');
+                gddData[section.id] = Array.from(keywordInputs).map(input => {
+                    const keyword = input.querySelector('.keyword').value.trim();
+                    const description = input.querySelector('.description').value.trim();
+                    return {
+                        keyword,
+                        description: description || undefined  // Only include description if it's not empty
+                    };
+                }).filter(item => item.keyword);  // Only include items with non-empty keywords
+            });
+
+            document.getElementById('loading').style.display = 'block';
+            const outputElement = document.getElementById('output');
+            outputElement.innerHTML = '';
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ gddData }),
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value);
+                    outputElement.innerHTML += chunk;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                outputElement.innerHTML = `<p>Error: ${error.message}</p>`;
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function saveDraft() {
+            const gddData = {};
+            gddStructure.forEach(section => {
+                const sectionElement = document.getElementById(section.id);
+                const keywordInputs = sectionElement.querySelectorAll('.keyword-input');
+                gddData[section.id] = Array.from(keywordInputs).map(input => ({
+                    keyword: input.querySelector('.keyword').value,
+                    description: input.querySelector('.description').value
+                }));
+            });
+            localStorage.setItem('gddDraft', JSON.stringify(gddData));
+            alert('Draft saved successfully!');
+        }
+
+        function loadDraft() {
+            const savedData = localStorage.getItem('gddDraft');
+            if (savedData) {
+                const gddData = JSON.parse(savedData);
+                gddStructure.forEach(section => {
+                    const sectionElement = document.getElementById(section.id);
+                    const container = sectionElement.querySelector('.keywords-container');
+                    container.innerHTML = ''; // Clear existing inputs
+                    gddData[section.id].forEach(item => {
+                        container.innerHTML += createKeywordInput(section.id, item.keyword, item.description);
+                    });
+                });
+                alert('Draft loaded successfully!');
+            } else {
+                alert('No saved draft found.');
+            }
+        }
+    </script>
+</body>
+
+</html>
